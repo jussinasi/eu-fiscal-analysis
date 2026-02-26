@@ -48,53 +48,57 @@ def print_dim_samples(js: dict, max_items: int = 15) -> None:
 def main():
     dataset = "gov_10dd_edpt1"
 
-    # Discover valid codes (kept for transparency/debugging)
-    params_discover = {
+    # Base filters: gross debt (% GDP), general government, annual
+    params_base = {
         "unit": "PC_GDP",
         "sector": "S13",
-        "geo": "FI",
         "sinceTimePeriod": "2010",
         "untilTimePeriod": "2024",
+        "na_item": "GD",
     }
 
-    js = fetch(dataset, params_discover)
-    print_dim_samples(js)
+    geos = ["FI", "DE", "FR", "IT", "ES"]  # add more if you want
 
-    chosen = "GD"
-    print("\nChoosing na_item =", chosen, "(gross debt, % of GDP)\n")
+    all_rows = []
+    for geo in geos:
+        params = dict(params_base)
+        params["geo"] = geo
 
-    params = dict(params_discover)
-    params["na_item"] = chosen
+        js = fetch(dataset, params)
+        df = eurostat_to_long(js)
+        out = df[["geo", "time", "value"]].copy()
+        out["time"] = out["time"].astype(int)
+        out = out.sort_values(["geo", "time"])
+        all_rows.append(out)
 
-    js2 = fetch(dataset, params)
-    df = eurostat_to_long(js2)
-
-    out = df[["geo", "time", "value"]].copy()
-    out["time"] = out["time"].astype(int)
-    out = out.sort_values(["geo", "time"])
+    combined = pd.concat(all_rows, ignore_index=True)
 
     Path("data/raw").mkdir(parents=True, exist_ok=True)
-    out_path = Path("data/raw/fi_gross_debt_pc_gdp.csv")
-    out.to_csv(out_path, index=False)
+    out_path = Path("data/raw/eu5_gross_debt_pc_gdp.csv")
+    combined.to_csv(out_path, index=False)
 
-    # Chart
+    # Chart: multi-country comparison
     import matplotlib.pyplot as plt
 
     Path("output/charts").mkdir(parents=True, exist_ok=True)
     plt.figure()
-    plt.plot(out["time"], out["value"])
-    plt.title("Finland: General government gross debt (% of GDP)")
+
+    for geo in geos:
+        sub = combined[combined["geo"] == geo].sort_values("time")
+        plt.plot(sub["time"], sub["value"], label=geo)
+
+    plt.title("General government gross debt (% of GDP): FI, DE, FR, IT, ES")
     plt.xlabel("Year")
     plt.ylabel("% of GDP")
+    plt.legend()
     plt.tight_layout()
-    fig_path = Path("output/charts/fi_gross_debt_pc_gdp.png")
+    fig_path = Path("output/charts/eu5_gross_debt_pc_gdp.png")
     plt.savefig(fig_path, dpi=150)
     plt.close()
+
+    print(f"Saved: {out_path} (rows={len(combined)})")
     print(f"Chart saved: {fig_path}")
-
-    print(f"Saved: {out_path} (rows={len(out)})")
-    print(out.tail())
-
+    print(combined.tail())
 
 if __name__ == "__main__":
     main()
