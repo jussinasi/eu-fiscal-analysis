@@ -46,21 +46,17 @@ def eurostat_json_to_long(js: dict) -> pd.DataFrame:
 
 
 def main():
-    # Example dataset: gov_10dd_edpt1 = Government deficit/surplus, debt and associated data
-    # We'll pull GENERAL GOVERNMENT GROSS DEBT (Maastricht debt), % of GDP, annual.
+    # Government gross debt (% of GDP), annual
     dataset = "gov_10dd_edpt1"
     params = {
-        "na_item": "GD",   # Gross debt
-        "sector": "S13",   # General government
-        "unit": "PC_GDP",  # % of GDP
-        "time": "2010-2024",
-        "geo": "FI",       # Finland as a start (change later)
+        "na_item": "GGD",     # Gross government debt
+        "unit": "PC_GDP",     # % of GDP
+        "geo": "FI",          # Finland
     }
 
     js = fetch_eurostat(dataset, params)
     df = eurostat_json_to_long(js)
 
-    # Keep only what we need and tidy time to int
     out = df[["geo", "time", "value"]].copy()
     out["time"] = out["time"].astype(int)
     out = out.sort_values(["geo", "time"])
@@ -69,7 +65,6 @@ def main():
     out_path = Path("data/raw/fi_debt_pct_gdp.csv")
     out.to_csv(out_path, index=False)
 
-    print(f"Saved: {out_path}  (rows={len(out)})")
     print(out.tail())
 
 
