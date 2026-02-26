@@ -1,23 +1,20 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
 *.egg-info/
 
 # Jupyter
 .ipynb_checkpoints/
 
-# Virtual environments
+# Virtual env
 venv/
 .env/
 
-# Data files
+# Data
 data/raw/
 *.csv
 *.xlsx
 
-# OS files
+# OS
 .DS_Store
 Thumbs.db
