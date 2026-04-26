@@ -15,10 +15,10 @@ st.set_page_config(
 BASE = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
 
 INDICATORS = {
-    "Gross debt (% GDP)":        {"dataset": "gov_10dd_edpt1", "na_item": "GD",  "unit": "PC_GDP"},
-    "Budget deficit (% GDP)":    {"dataset": "gov_10dd_edpt1", "na_item": "B9",  "unit": "PC_GDP"},
-    "Government revenue (% GDP)":{"dataset": "gov_10dd_edpt1", "na_item": "TR",  "unit": "PC_GDP"},
-    "Government expenditure (% GDP)":{"dataset": "gov_10dd_edpt1", "na_item": "TE", "unit": "PC_GDP"},
+    "Gross debt (% GDP)":             {"dataset": "gov_10dd_edpt1", "na_item": "GD",  "unit": "PC_GDP"},
+    "Budget deficit (% GDP)":         {"dataset": "gov_10dd_edpt1", "na_item": "B9",  "unit": "PC_GDP"},
+    "Government revenue (% GDP)":     {"dataset": "gov_10a3_exp",   "na_item": "TR",  "unit": "PC_GDP"},
+    "Government expenditure (% GDP)": {"dataset": "gov_10a3_exp",   "na_item": "TE",  "unit": "PC_GDP"},
 }
 
 EU_COUNTRIES = {
@@ -77,6 +77,7 @@ def load_indicator(indicator_key: str, geos: tuple, year_from: int, year_to: int
     if not rows:
         return pd.DataFrame(columns=["geo", "time", "value"])
     combined = pd.concat(rows, ignore_index=True).sort_values(["geo", "time"])
+    combined = combined[combined["geo"].isin(EU_COUNTRIES.keys())]
     combined["country"] = combined["geo"].map(EU_COUNTRIES)
     return combined
 
