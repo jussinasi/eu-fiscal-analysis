@@ -225,13 +225,93 @@ def generate_analytical_narrative(focus_name, gap_val, rev_val, exp_val, latest_
 
     return "\n\n".join(lines)
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def load_all_countries_dsa(r=3.5, g=1.5):
+    """Run DSA model for all EU countries and return sustainability ranking."""
+    results = []
+    for geo, country in EU_COUNTRIES.items():
+        try:
+            # Debt
+            js = fetch("gov_10dd_edpt1", {"unit": "PC_GDP", "sector": "S13", "na_item": "GD",
+                                           "geo": geo, "sinceTimePeriod": "2020"})
+            df = eurostat_to_long(js)
+            df = df[df["geo"] == geo][["time", "value"]].dropna()
+            df["time"] = df["time"].astype(int)
+            df = df.sort_values("time")
+            if df.empty:
+                continue
+            debt = df["value"].iloc[-1]
+            debt_year = df["time"].iloc[-1]
+
+            # Deficit
+            js2 = fetch("gov_10dd_edpt1", {"unit": "PC_GDP", "sector": "S13", "na_item": "B9",
+                                            "geo": geo, "sinceTimePeriod": "2020"})
+            df2 = eurostat_to_long(js2)
+            df2 = df2[df2["geo"] == geo][["time", "value"]].dropna()
+            df2["time"] = df2["time"].astype(int)
+            df2 = df2.sort_values("time")
+            if df2.empty:
+                continue
+            deficit = df2["value"].iloc[-1]
+
+            # Primary balance estimate
+            approx_interest = 0.02 * debt
+            pb = deficit + approx_interest
+
+            # DSA
+            rg = r - g
+            pb_star = ((r/100 - g/100) / (1 + g/100)) * debt
+            gap = pb - pb_star
+
+            # 12-year trajectory
+            traj = [debt]
+            d = debt
+            for _ in range(12):
+                d = ((1 + r/100) / (1 + g/100)) * d - pb
+                traj.append(d)
+            end_debt = traj[-1]
+            delta = end_debt - debt
+
+            # Risk classification
+            if gap >= 0 and end_debt < 60:
+                risk = "🟢 Stable"
+                risk_order = 1
+            elif gap >= 0 or delta < 5:
+                risk = "🟡 At risk"
+                risk_order = 2
+            elif delta < 20:
+                risk = "🔴 Unsustainable"
+                risk_order = 3
+            else:
+                risk = "🔥 Explosive"
+                risk_order = 4
+
+            results.append({
+                "geo": geo,
+                "Country": country,
+                "Debt (% GDP)": round(debt, 1),
+                "Deficit (% GDP)": round(deficit, 1),
+                "Primary balance": round(pb, 1),
+                "pb* (stabilising)": round(pb_star, 1),
+                "Gap (pp)": round(gap, 1),
+                "Debt 2035 (projected)": round(end_debt, 1),
+                "Δ debt": round(delta, 1),
+                "r−g": round(rg, 1),
+                "Risk": risk,
+                "risk_order": risk_order,
+                "year": debt_year,
+            })
+        except Exception:
+            continue
+    return pd.DataFrame(results).sort_values(["risk_order", "Debt (% GDP)"], ascending=[True, False])
+
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.image("https://upload.wikimedia.org/wikipedia/commons/b/b7/Flag_of_Europe.svg", width=80)
     st.title("EU Fiscal Dashboard")
     st.caption("Data: Eurostat")
 
-    page = st.radio("View", ["📊 Overview", "🔍 Deficit Decomposition", "📐 Debt Sustainability"])
+    page = st.radio("View", ["📊 Overview", "🔍 Deficit Decomposition", "📐 Debt Sustainability", "🌍 EU Sustainability Ranking"])
 
     country_options = [f"{k} – {v}" for k, v in EU_COUNTRIES.items()]
     default_display = [f"{k} – {EU_COUNTRIES[k]}" for k in DEFAULT_COUNTRIES]
@@ -318,6 +398,111 @@ if page == "📊 Overview":
         st.dataframe(df[["country", "geo", "time", "value"]].rename(
             columns={"time": "Year", "value": selected_indicator}), use_container_width=True, hide_index=True)
         st.download_button("⬇ Download CSV", df.to_csv(index=False).encode(), "eu_fiscal_data.csv", "text/csv")
+
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🌍 EU Sustainability Ranking":
+# ══════════════════════════════════════════════════════════════════════════════
+    st.subheader("EU Debt Sustainability Ranking")
+    st.caption("All 27 EU member states · DSA model · Assumptions: r = 3.5%, g = 1.5%")
+
+    col_r, col_g, _ = st.columns([1, 1, 3])
+    with col_r:
+        r_all = st.slider("Interest rate r (%)", 0.0, 8.0, 3.5, 0.1, key="r_all")
+    with col_g:
+        g_all = st.slider("GDP growth g (%)", -2.0, 6.0, 1.5, 0.1, key="g_all")
+
+    with st.spinner("Running DSA model for all 27 EU countries…"):
+        ranking_df = load_all_countries_dsa(r_all, g_all)
+
+    if ranking_df.empty:
+        st.error("Could not load data.")
+        st.stop()
+
+    # Summary metrics
+    n_stable      = (ranking_df["Risk"] == "🟢 Stable").sum()
+    n_risk        = (ranking_df["Risk"] == "🟡 At risk").sum()
+    n_unsust      = (ranking_df["Risk"] == "🔴 Unsustainable").sum()
+    n_explosive   = (ranking_df["Risk"] == "🔥 Explosive").sum()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("🟢 Stable",       n_stable)
+    m2.metric("🟡 At risk",      n_risk)
+    m3.metric("🔴 Unsustainable", n_unsust)
+    m4.metric("🔥 Explosive",    n_explosive)
+
+    st.divider()
+
+    # Bubble chart: debt vs deficit, sized by projected 2035 debt
+    fig = px.scatter(
+        ranking_df,
+        x="Deficit (% GDP)", y="Debt (% GDP)",
+        size="Debt 2035 (projected)", color="Risk",
+        text="geo",
+        color_discrete_map={
+            "🟢 Stable": "#16a34a",
+            "🟡 At risk": "#d97706",
+            "🔴 Unsustainable": "#dc2626",
+            "🔥 Explosive": "#7c2d12",
+        },
+        hover_data={"Country": True, "Debt (% GDP)": True, "Deficit (% GDP)": True,
+                    "Debt 2035 (projected)": True, "Gap (pp)": True},
+        title="EU Fiscal Sustainability Map · Debt vs. Deficit (bubble = projected 2035 debt)",
+        size_max=60,
+    )
+    fig.add_vline(x=-3, line_dash="dash", line_color="red", line_width=1,
+                  annotation_text="SGP: −3%", annotation_position="top right")
+    fig.add_hline(y=60, line_dash="dash", line_color="red", line_width=1,
+                  annotation_text="SGP: 60%", annotation_position="bottom right")
+    fig.update_traces(textposition="top center", textfont_size=10)
+    fig.update_layout(plot_bgcolor="white", yaxis=dict(gridcolor="#eee"),
+                      xaxis=dict(gridcolor="#eee"))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Bar chart: projected debt change
+    fig2 = px.bar(
+        ranking_df.sort_values("Δ debt", ascending=False),
+        x="Country", y="Δ debt", color="Risk",
+        color_discrete_map={
+            "🟢 Stable": "#16a34a",
+            "🟡 At risk": "#d97706",
+            "🔴 Unsustainable": "#dc2626",
+            "🔥 Explosive": "#7c2d12",
+        },
+        labels={"Δ debt": "Projected debt change 2023–2035 (pp)", "Country": ""},
+        title="Projected change in debt-to-GDP by 2035",
+    )
+    fig2.add_hline(y=0, line_color="black", line_width=1)
+    fig2.update_layout(plot_bgcolor="white", yaxis=dict(gridcolor="#eee"), showlegend=False)
+    st.plotly_chart(fig2, use_container_width=True)
+
+    # Full ranking table
+    st.subheader("Full ranking")
+    display_cols = ["Country", "Risk", "Debt (% GDP)", "Deficit (% GDP)",
+                    "pb* (stabilising)", "Gap (pp)", "Debt 2035 (projected)", "Δ debt"]
+    st.dataframe(
+        ranking_df[display_cols].reset_index(drop=True),
+        use_container_width=True, hide_index=True,
+        column_config={
+            "Gap (pp)": st.column_config.NumberColumn(help="Primary balance minus stabilising pb*. Positive = sustainable."),
+            "Δ debt": st.column_config.NumberColumn(help="Projected debt change by 2035 (pp of GDP)"),
+        }
+    )
+
+    # Narrative
+    st.divider()
+    worst = ranking_df[ranking_df["risk_order"] == ranking_df["risk_order"].max()].head(3)["Country"].tolist()
+    best  = ranking_df[ranking_df["risk_order"] == 1].head(3)["Country"].tolist()
+    st.info(
+        f"**Under current assumptions (r={r_all}%, g={g_all}%):** "
+        f"{n_stable} EU countries are on a stable debt path, while {n_unsust + n_explosive} face unsustainable dynamics. "
+        f"Most at risk: **{', '.join(worst)}**. "
+        f"Most stable: **{', '.join(best) if best else 'none'}**. "
+        f"Adjust the r and g sliders above to model different macroeconomic environments."
+    )
+
+    with st.expander("📄 Full data"):
+        st.download_button("⬇ Download CSV", ranking_df.to_csv(index=False).encode(),
+                           "eu_sustainability_ranking.csv", "text/csv")
 
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🔍 Deficit Decomposition":
