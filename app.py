@@ -19,9 +19,8 @@ st.set_page_config(
 INDICATORS = {
     "Gross debt (% GDP)":             {"dataset": "gov_10dd_edpt1", "na_item": "GD",  "unit": "PC_GDP"},
     "Budget deficit (% GDP)":         {"dataset": "gov_10dd_edpt1", "na_item": "B9",  "unit": "PC_GDP"},
-    "Government revenue (% GDP)":     {"dataset": "gov_10a3_exp",   "na_item": "TR",  "unit": "PC_GDP"},
-    "Government expenditure (% GDP)": {"dataset": "gov_10a3_exp",   "na_item": "TE",  "unit": "PC_GDP"},
-}
+    "Government revenue (% GDP)":     {"dataset": "gov_10a_main",   "na_item": "TR",  "unit": "PC_GDP"},
+    "Government expenditure (% GDP)": {"dataset": "gov_10a_main",   "na_item": "TE",  "unit": "PC_GDP"},
 
 EU_COUNTRIES = {
     "AT": "Austria", "BE": "Belgium", "BG": "Bulgaria", "CY": "Cyprus",
