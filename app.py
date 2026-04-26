@@ -432,11 +432,14 @@ elif page == "🌍 EU Sustainability Ranking":
 
     st.divider()
 
+    # Ensure size column is positive for bubble chart
+    ranking_df["bubble_size"] = ranking_df["Debt 2035 (projected)"].clip(lower=1)
+
     # Bubble chart: debt vs deficit, sized by projected 2035 debt
     fig = px.scatter(
         ranking_df,
         x="Deficit (% GDP)", y="Debt (% GDP)",
-        size="Debt 2035 (projected)", color="Risk",
+        size="bubble_size", color="Risk",
         text="geo",
         color_discrete_map={
             "Stable": "#16a34a",
