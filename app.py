@@ -274,16 +274,16 @@ def load_all_countries_dsa(r=3.5, g=1.5):
 
             # Risk classification
             if gap >= 0 and end_debt < 60:
-                risk = "🟢 Stable"
+                risk = "Stable"
                 risk_order = 1
             elif gap >= 0 or delta < 5:
-                risk = "🟡 At risk"
+                risk = "At risk"
                 risk_order = 2
             elif delta < 20:
-                risk = "🔴 Unsustainable"
+                risk = "Unsustainable"
                 risk_order = 3
             else:
-                risk = "🔥 Explosive"
+                risk = "Explosive"
                 risk_order = 4
 
             results.append({
@@ -419,16 +419,16 @@ elif page == "🌍 EU Sustainability Ranking":
         st.stop()
 
     # Summary metrics
-    n_stable      = (ranking_df["Risk"] == "🟢 Stable").sum()
-    n_risk        = (ranking_df["Risk"] == "🟡 At risk").sum()
-    n_unsust      = (ranking_df["Risk"] == "🔴 Unsustainable").sum()
-    n_explosive   = (ranking_df["Risk"] == "🔥 Explosive").sum()
+    n_stable      = (ranking_df["Risk"] == "Stable").sum()
+    n_risk        = (ranking_df["Risk"] == "At risk").sum()
+    n_unsust      = (ranking_df["Risk"] == "Unsustainable").sum()
+    n_explosive   = (ranking_df["Risk"] == "Explosive").sum()
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("🟢 Stable",       n_stable)
-    m2.metric("🟡 At risk",      n_risk)
-    m3.metric("🔴 Unsustainable", n_unsust)
-    m4.metric("🔥 Explosive",    n_explosive)
+    m1.metric("🟢 Stable",        n_stable)
+    m2.metric("🟡 At risk",       n_risk)
+    m3.metric("🔴 Unsustainable",  n_unsust)
+    m4.metric("🔥 Explosive",     n_explosive)
 
     st.divider()
 
@@ -439,10 +439,10 @@ elif page == "🌍 EU Sustainability Ranking":
         size="Debt 2035 (projected)", color="Risk",
         text="geo",
         color_discrete_map={
-            "🟢 Stable": "#16a34a",
-            "🟡 At risk": "#d97706",
-            "🔴 Unsustainable": "#dc2626",
-            "🔥 Explosive": "#7c2d12",
+            "Stable": "#16a34a",
+            "At risk": "#d97706",
+            "Unsustainable": "#dc2626",
+            "Explosive": "#7c2d12",
         },
         hover_data={"Country": True, "Debt (% GDP)": True, "Deficit (% GDP)": True,
                     "Debt 2035 (projected)": True, "Gap (pp)": True},
@@ -463,10 +463,10 @@ elif page == "🌍 EU Sustainability Ranking":
         ranking_df.sort_values("Δ debt", ascending=False),
         x="Country", y="Δ debt", color="Risk",
         color_discrete_map={
-            "🟢 Stable": "#16a34a",
-            "🟡 At risk": "#d97706",
-            "🔴 Unsustainable": "#dc2626",
-            "🔥 Explosive": "#7c2d12",
+            "Stable": "#16a34a",
+            "At risk": "#d97706",
+            "Unsustainable": "#dc2626",
+            "Explosive": "#7c2d12",
         },
         labels={"Δ debt": "Projected debt change 2023–2035 (pp)", "Country": ""},
         title="Projected change in debt-to-GDP by 2035",
