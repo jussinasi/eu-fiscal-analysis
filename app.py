@@ -455,37 +455,74 @@ elif page == "📐 Debt Sustainability":
     end_cons   = traj_cons[-1]
     rg_base    = r_base - g_base
 
-    st.markdown("#### Sustainability verdict")
-    v1, v2, v3 = st.columns(3)
+    # Required primary balance for stabilisation: pb* = (r-g)/(1+g) * debt
+    def required_pb(r, g, debt):
+        return ((r/100 - g/100) / (1 + g/100)) * debt
 
-    def verdict_card(label, end_val, start_val, rg, color, bg):
+    pb_star_base   = required_pb(r_base,   g_base,   debt0)
+    pb_star_stress = required_pb(r_stress, g_stress, debt0)
+    pb_star_cons   = required_pb(r_cons,   g_cons,   debt0)
+    gap_base       = pb_base   - pb_star_base
+    gap_stress     = pb_stress - pb_star_stress
+    gap_cons       = pb_cons   - pb_star_cons
+
+    def verdict_label(end_val, rg, pb_gap):
+        if pb_gap >= 0 and end_val < 60:
+            return "✅ Stabilising", "#1a7f37", "#f0fdf4", "#86efac"
+        elif pb_gap >= -1 or end_val < 70:
+            return "⚠️ At risk", "#92400e", "#fffbeb", "#fcd34d"
+        else:
+            return "❌ Unsustainable", "#b91c1c", "#fef2f2", "#fca5a5"
+
+    def verdict_card(label, end_val, start_val, rg, pb_current, pb_star, pb_gap):
         direction = "📈 Rising" if end_val > start_val + 1 else ("📉 Falling" if end_val < start_val - 1 else "→ Stable")
-        stable = "sustainable" if rg < 0 or end_val < 60 else "at risk"
+        vl, vc, bg, bc = verdict_label(end_val, rg, pb_gap)
+        above60 = end_val > 60
+        cons_note = f"Debt {'remains above' if above60 else 'falls below'} 60% SGP threshold by 2035."
         st.markdown(f"""
-        <div style="background:{bg};border-radius:10px;padding:14px 18px;text-align:center;">
-            <div style="font-size:0.8em;color:#64748b;text-transform:uppercase;">{label}</div>
-            <div style="font-size:1.8em;font-weight:800;color:{color};">{end_val:.1f}%</div>
-            <div style="font-size:0.85em;color:#475569;">by 2035 · {direction}</div>
-            <div style="font-size:0.8em;font-weight:600;color:{color};margin-top:4px;">r−g = {rg:+.1f}pp → {stable}</div>
+        <div style="background:{bg};border:1.5px solid {bc};border-radius:10px;padding:14px 18px;text-align:center;">
+            <div style="font-size:0.8em;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">{label}</div>
+            <div style="font-size:1.8em;font-weight:800;color:{vc};">{end_val:.1f}%</div>
+            <div style="font-size:0.82em;color:#475569;">by 2035 · {direction}</div>
+            <div style="font-size:0.9em;font-weight:700;color:{vc};margin:6px 0 4px 0;">{vl}</div>
+            <div style="font-size:0.75em;color:#64748b;">r−g = {rg:+.1f}pp</div>
+            <div style="font-size:0.75em;color:#64748b;">Stabilising pb*: {pb_star:+.1f}% GDP</div>
+            <div style="font-size:0.75em;color:#64748b;">Current pb: {pb_current:+.1f}% → gap: {pb_gap:+.1f}pp</div>
+            <div style="font-size:0.72em;color:#94a3b8;margin-top:4px;">{cons_note}</div>
         </div>""", unsafe_allow_html=True)
 
+    st.markdown("#### Sustainability verdict")
+    v1, v2, v3 = st.columns(3)
     with v1:
-        verdict_card("Baseline", end_base, debt0, r_base - g_base, "#3b82f6", "#eff6ff")
+        verdict_card("Baseline", end_base, debt0, r_base-g_base, pb_base, pb_star_base, gap_base)
     with v2:
-        verdict_card("Stress", end_stress, debt0, r_stress - g_stress, "#ef4444", "#fef2f2")
+        verdict_card("Stress", end_stress, debt0, r_stress-g_stress, pb_stress, pb_star_stress, gap_stress)
     with v3:
-        verdict_card("Consolidation", end_cons, debt0, r_cons - g_cons, "#16a34a", "#f0fdf4")
+        verdict_card("Consolidation", end_cons, debt0, r_cons-g_cons, pb_cons, pb_star_cons, gap_cons)
 
-    # Narrative
+    # Key takeaway
     st.markdown("---")
-    if rg_base > 0 and end_base > 60:
-        st.error(f"⚠️ **Baseline scenario is unsustainable.** With r−g = +{rg_base:.1f}pp, debt is on an "
-                 f"explosive path, rising from **{debt0:.1f}%** to **{end_base:.1f}% GDP** by 2035. "
-                 f"Fiscal consolidation or structural growth reforms are needed to stabilise the trajectory.")
+    vl_base, _, _, _ = verdict_label(end_base, r_base - g_base, gap_base)
+    why = f"This is driven by a {'persistent primary deficit' if pb_base < 0 else 'primary surplus insufficient to offset r−g dynamics'} and r > g." if r_base > g_base else "The favourable r−g differential helps contain debt dynamics."
+
+    if gap_base < -1 and end_base > 60:
+        st.error(
+            f"**Key takeaway:** {focus_name}'s debt is on an **unfavourable upward trajectory** under current policies, "
+            f"rising from **{debt0:.1f}%** to **{end_base:.1f}% GDP** by 2035. {why} "
+            f"Stabilising debt would require a primary balance of **{pb_star_base:+.1f}% GDP** — "
+            f"an adjustment of **{abs(gap_base):.1f}pp** from the current **{pb_base:+.1f}%**."
+        )
     elif end_base > debt0 + 5:
-        st.warning(f"📈 **Debt is rising but not explosive.** Baseline projects debt reaching **{end_base:.1f}% GDP** "
-                   f"by 2035. The (r−g) differential of {rg_base:+.1f}pp is manageable but warrants monitoring.")
+        st.warning(
+            f"**Key takeaway:** {focus_name}'s debt is **rising but not on an explosive path**, "
+            f"projected at **{end_base:.1f}% GDP** by 2035. {why} "
+            f"Stabilisation requires a primary balance of **{pb_star_base:+.1f}% GDP** "
+            f"(current gap: **{abs(gap_base):.1f}pp**)."
+        )
     else:
-        st.success(f"✅ **Debt trajectory is broadly sustainable.** Baseline projects debt at **{end_base:.1f}% GDP** "
-                   f"by 2035 — {'below' if end_base < 60 else 'approaching'} the 60% SGP reference. "
-                   f"The (r−g) differential of {rg_base:+.1f}pp supports stabilisation.")
+        st.success(
+            f"**Key takeaway:** {focus_name}'s debt trajectory is **broadly sustainable** under baseline assumptions, "
+            f"projected at **{end_base:.1f}% GDP** by 2035. {why} "
+            f"The stabilising primary balance is **{pb_star_base:+.1f}% GDP** — "
+            f"{'currently met' if gap_base >= 0 else f'a gap of {abs(gap_base):.1f}pp remains'}."
+        )
