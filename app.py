@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import numpy as np
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
@@ -107,6 +108,15 @@ def load_fiscal_health(geo):
             pass
     return result
 
+def debt_trajectory(d0, primary_balance, r, g, years=12):
+    """Simulate debt-to-GDP ratio: Δd = (r-g)/(1+g) * d + primary_deficit"""
+    trajectory = [d0]
+    d = d0
+    for _ in range(years):
+        d = ((1 + r/100) / (1 + g/100)) * d - primary_balance
+        trajectory.append(d)
+    return trajectory
+
 def fiscal_health_card(geo, country):
     data = load_fiscal_health(geo)
     debt, deficit = data["debt"], data["deficit"]
@@ -149,12 +159,10 @@ def fiscal_health_card(geo, country):
     """, unsafe_allow_html=True)
 
 def generate_analytical_narrative(focus_name, gap_val, rev_val, exp_val, latest_year, re_df, debt):
-    """Generate a policy-relevant analytical narrative."""
     lines = []
     deficit_threshold = -3.0
-    breach = gap_val - deficit_threshold  # negative = how far below -3%
+    breach = gap_val - deficit_threshold
 
-    # 1. Situation statement
     if gap_val >= 0:
         lines.append(f"**{focus_name}** recorded a fiscal **surplus of {gap_val:.1f}% GDP** in {int(latest_year)}, "
                      f"with revenue ({rev_val:.1f}%) exceeding expenditure ({exp_val:.1f}%).")
@@ -165,56 +173,40 @@ def generate_analytical_narrative(focus_name, gap_val, rev_val, exp_val, latest_
     else:
         lines.append(f"**{focus_name}** recorded a fiscal **deficit of {abs(gap_val):.1f}% GDP** in {int(latest_year)} "
                      f"(revenue: {rev_val:.1f}%, expenditure: {exp_val:.1f}%). "
-                     f"❌ This **exceeds the EU's 3% SGP threshold by {abs(breach):.1f} percentage points** — "
-                     f"a significant fiscal breach.")
+                     f"❌ This **exceeds the EU's 3% SGP threshold by {abs(breach):.1f} percentage points**.")
 
-    # 2. Trend significance
     if len(re_df) >= 4:
         sorted_df = re_df.sort_values("year")
-        gap_last = sorted_df["gap"].iloc[-1]
-        gap_3y_ago = sorted_df["gap"].iloc[-3]
-        gap_5y_ago = sorted_df["gap"].iloc[-5] if len(re_df) >= 6 else None
-        change_3y = gap_last - gap_3y_ago
-
+        change_3y = sorted_df["gap"].iloc[-1] - sorted_df["gap"].iloc[-3]
         years_in_deficit = (sorted_df["gap"] < -3).sum()
         total_years = len(sorted_df)
 
         if gap_val < -3 and years_in_deficit >= 3:
-            lines.append(f"⚠️ **Persistent breach:** The deficit has exceeded the 3% threshold in "
-                         f"{years_in_deficit} of the last {total_years} years — indicating a structural, "
-                         f"not cyclical, fiscal problem.")
+            lines.append(f"⚠️ **Persistent breach:** The deficit has exceeded 3% in {years_in_deficit} of "
+                         f"the last {total_years} years — indicating a **structural, not cyclical**, fiscal problem.")
         elif change_3y > 1.0:
-            lines.append(f"📈 **Improving trend:** The fiscal gap has improved by **{change_3y:.1f}pp** over 3 years, "
-                         f"suggesting active consolidation.")
+            lines.append(f"📈 **Improving trend:** The fiscal gap improved by **{change_3y:.1f}pp** over 3 years — active consolidation visible.")
         elif change_3y < -1.0:
-            lines.append(f"📉 **Deteriorating trend:** The fiscal gap has worsened by **{abs(change_3y):.1f}pp** "
-                         f"over 3 years — no consolidation visible.")
+            lines.append(f"📉 **Deteriorating trend:** The fiscal gap worsened by **{abs(change_3y):.1f}pp** over 3 years — no consolidation visible.")
         else:
             if gap_val < -3:
-                lines.append(f"🔴 **No consolidation trend:** The deficit has remained persistently above the 3% "
-                             f"threshold with no meaningful improvement.")
+                lines.append("🔴 **No consolidation trend:** Deficit persistently above 3% with no meaningful improvement.")
             else:
-                lines.append(f"→ The fiscal position has remained broadly stable over the past 3 years.")
+                lines.append("→ The fiscal position has remained broadly stable over the past 3 years.")
 
-    # 3. Link to debt dynamics
     if debt is not None and gap_val < 0:
-        # Simplified: if deficit > 0, debt likely rising (ignoring growth/inflation)
         if gap_val < -3:
             lines.append(f"💰 **Debt implication:** At this deficit level, **debt-to-GDP is likely rising** "
-                         f"unless nominal GDP growth is sufficiently high. "
-                         f"Current debt stands at **{debt:.1f}% GDP** "
+                         f"unless nominal GDP growth offsets it. Current debt: **{debt:.1f}% GDP** "
                          f"({'above' if debt > 60 else 'below'} the 60% SGP reference).")
-        elif gap_val < 0:
-            lines.append(f"💰 **Debt implication:** The deficit adds to the stock of debt. "
-                         f"Current gross debt stands at **{debt:.1f}% GDP** "
+        else:
+            lines.append(f"💰 Current gross debt stands at **{debt:.1f}% GDP** "
                          f"({'above' if debt > 60 else 'below'} the 60% SGP reference).")
 
-    # 4. Required adjustment
     if gap_val < deficit_threshold:
         required = abs(gap_val - deficit_threshold)
-        lines.append(f"🎯 **Required fiscal adjustment:** To return to SGP compliance, "
-                     f"{focus_name} would need to improve its fiscal balance by **{required:.1f}pp of GDP** — "
-                     f"achievable through revenue increases, expenditure cuts, or a combination.")
+        lines.append(f"🎯 **Required adjustment:** {focus_name} needs to improve its fiscal balance by "
+                     f"**{required:.1f}pp of GDP** to return to SGP compliance.")
 
     return "\n\n".join(lines)
 
@@ -224,7 +216,7 @@ with st.sidebar:
     st.title("EU Fiscal Dashboard")
     st.caption("Data: Eurostat")
 
-    page = st.radio("View", ["📊 Overview", "🔍 Deficit Decomposition"])
+    page = st.radio("View", ["📊 Overview", "🔍 Deficit Decomposition", "📐 Debt Sustainability"])
 
     country_options = [f"{k} – {v}" for k, v in EU_COUNTRIES.items()]
     default_display = [f"{k} – {EU_COUNTRIES[k]}" for k in DEFAULT_COUNTRIES]
@@ -327,63 +319,48 @@ elif page == "🔍 Deficit Decomposition":
         st.stop()
 
     latest = re_df[re_df["year"] == re_df["year"].max()].iloc[0]
-    rev_val = latest["revenue"]
-    exp_val = latest["expenditure"]
-    gap_val = latest["gap"]
-    latest_year = latest["year"]
+    rev_val, exp_val, gap_val, latest_year = latest["revenue"], latest["expenditure"], latest["gap"], latest["year"]
     debt = health["debt"]
 
-    # ── Metrics ───────────────────────────────────────────────────────────────
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Revenue", f"{rev_val:.1f}% GDP")
     m2.metric("Expenditure", f"{exp_val:.1f}% GDP")
-    gap_label = "Surplus" if gap_val >= 0 else "Deficit"
-    m3.metric(f"Fiscal {gap_label}", f"{gap_val:+.1f}% GDP")
+    m3.metric("Fiscal balance", f"{gap_val:+.1f}% GDP")
     if gap_val < -3:
-        adj = abs(gap_val - (-3))
-        m4.metric("Required adjustment", f"+{adj:.1f}pp", delta="to reach SGP −3%", delta_color="off")
+        m4.metric("Required adjustment", f"+{abs(gap_val+3):.1f}pp", delta="to reach SGP −3%", delta_color="off")
     elif debt is not None:
         m4.metric("Gross debt", f"{debt:.1f}% GDP",
                   delta="above 60% SGP" if debt > 60 else "below 60% SGP",
                   delta_color="inverse" if debt > 60 else "normal")
 
-    # ── Revenue vs Expenditure area chart ─────────────────────────────────────
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=re_df["year"], y=re_df["expenditure"], name="Expenditure",
-        fill="tozeroy", line=dict(color="#ef4444", width=2), fillcolor="rgba(239,68,68,0.12)"))
-    fig.add_trace(go.Scatter(
-        x=re_df["year"], y=re_df["revenue"], name="Revenue",
-        fill="tozeroy", line=dict(color="#22c55e", width=2), fillcolor="rgba(34,197,94,0.18)"))
+    fig.add_trace(go.Scatter(x=re_df["year"], y=re_df["expenditure"], name="Expenditure",
+                             fill="tozeroy", line=dict(color="#ef4444", width=2), fillcolor="rgba(239,68,68,0.12)"))
+    fig.add_trace(go.Scatter(x=re_df["year"], y=re_df["revenue"], name="Revenue",
+                             fill="tozeroy", line=dict(color="#22c55e", width=2), fillcolor="rgba(34,197,94,0.18)"))
     fig.add_trace(go.Scatter(
         x=pd.concat([re_df["year"], re_df["year"][::-1]]),
         y=pd.concat([re_df["expenditure"], re_df["revenue"][::-1]]),
         fill="toself", fillcolor="rgba(239,68,68,0.22)",
         line=dict(color="rgba(0,0,0,0)"), name="Deficit gap"))
-    fig.update_layout(
-        title=f"{focus_name} · Revenue vs. Expenditure (% GDP)",
-        hovermode="x unified", plot_bgcolor="white",
-        yaxis=dict(gridcolor="#eee", title="% of GDP"),
-        xaxis=dict(title="Year"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    fig.update_layout(title=f"{focus_name} · Revenue vs. Expenditure (% GDP)",
+                      hovermode="x unified", plot_bgcolor="white",
+                      yaxis=dict(gridcolor="#eee", title="% of GDP"), xaxis=dict(title="Year"),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
     st.plotly_chart(fig, use_container_width=True)
 
-    # ── Gap bar chart with SGP line ────────────────────────────────────────────
-    fig3 = px.bar(
-        re_df, x="year", y="gap", color="gap",
-        color_continuous_scale=["#dc2626", "#f97316", "#facc15", "#86efac", "#16a34a"],
-        color_continuous_midpoint=0,
-        labels={"gap": "Revenue − Expenditure (pp)", "year": "Year"},
-        title=f"{focus_name} · Fiscal balance over time")
+    fig3 = px.bar(re_df, x="year", y="gap", color="gap",
+                  color_continuous_scale=["#dc2626", "#f97316", "#facc15", "#86efac", "#16a34a"],
+                  color_continuous_midpoint=0,
+                  labels={"gap": "Revenue − Expenditure (pp)", "year": "Year"},
+                  title=f"{focus_name} · Fiscal balance over time")
     fig3.add_hline(y=0, line_color="#1e293b", line_width=1)
     fig3.add_hline(y=-3, line_dash="dash", line_color="red", line_width=1.5,
                    annotation_text="SGP limit: −3%", annotation_position="bottom right")
     fig3.update_layout(coloraxis_showscale=False, plot_bgcolor="white", yaxis=dict(gridcolor="#eee"))
     st.plotly_chart(fig3, use_container_width=True)
 
-    # ── Analytical narrative ───────────────────────────────────────────────────
     narrative = generate_analytical_narrative(focus_name, gap_val, rev_val, exp_val, latest_year, re_df, debt)
-
     if gap_val < -3:
         st.error(narrative)
     elif gap_val < 0:
@@ -396,3 +373,119 @@ elif page == "🔍 Deficit Decomposition":
                                             "expenditure": "Expenditure (% GDP)", "gap": "Gap (pp)"}),
                      use_container_width=True, hide_index=True)
         st.download_button("⬇ Download CSV", re_df.to_csv(index=False).encode(), f"{focus_geo}_rev_exp.csv", "text/csv")
+
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "📐 Debt Sustainability":
+# ══════════════════════════════════════════════════════════════════════════════
+    st.subheader("Is the debt trajectory sustainable?")
+    st.caption("Debt dynamics model: Δd ≈ (r − g) · d + primary deficit · General government")
+
+    focus_options = [f"{k} – {EU_COUNTRIES[k]}" for k in selected_geos if k in EU_COUNTRIES]
+    focus_display = st.selectbox("Focus country", focus_options)
+    focus_geo = focus_display.split(" – ")[0]
+    focus_name = EU_COUNTRIES.get(focus_geo, focus_geo)
+
+    with st.spinner(f"Loading fiscal data for {focus_name}…"):
+        health = load_fiscal_health(focus_geo)
+
+    debt0 = health["debt"]
+    deficit0 = health["deficit"]
+
+    if debt0 is None:
+        st.error("No debt data available for this country.")
+        st.stop()
+
+    # Estimate primary balance: deficit - interest payments (approx 2% of debt as interest)
+    approx_interest = 0.02 * debt0
+    primary0 = (deficit0 if deficit0 is not None else -3.0) + approx_interest
+
+    st.markdown(f"**Starting point (2023):** Gross debt **{debt0:.1f}% GDP** · "
+                f"Budget balance **{deficit0:.1f}% GDP**" if deficit0 else f"**Starting point (2023):** Gross debt **{debt0:.1f}% GDP**")
+
+    st.markdown("#### Scenario parameters")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.markdown("**Baseline**")
+        r_base = st.slider("Interest rate r (%)", 0.0, 8.0, 3.5, 0.1, key="r_base")
+        g_base = st.slider("GDP growth g (%)", -2.0, 6.0, 1.5, 0.1, key="g_base")
+        pb_base = st.slider("Primary balance (% GDP)", -6.0, 4.0,
+                            round(float(primary0), 1) if primary0 else -1.0, 0.1, key="pb_base")
+    with col_b:
+        st.markdown("**Stress scenario**")
+        r_stress = st.slider("Interest rate r (%)", 0.0, 8.0, min(r_base + 1.5, 8.0), 0.1, key="r_stress")
+        g_stress = st.slider("GDP growth g (%)", -2.0, 6.0, max(g_base - 1.0, -2.0), 0.1, key="g_stress")
+        pb_stress = st.slider("Primary balance (% GDP)", -6.0, 4.0, min(pb_base - 1.0, -6.0), 0.1, key="pb_stress")
+
+    st.markdown("**Consolidation scenario**")
+    col_c1, col_c2, col_c3 = st.columns(3)
+    with col_c1:
+        r_cons = st.slider("Interest rate r (%)", 0.0, 8.0, r_base, 0.1, key="r_cons")
+    with col_c2:
+        g_cons = st.slider("GDP growth g (%)", -2.0, 6.0, g_base, 0.1, key="g_cons")
+    with col_c3:
+        pb_cons = st.slider("Primary balance (% GDP)", -6.0, 4.0, min(pb_base + 2.0, 4.0), 0.1, key="pb_cons")
+
+    # Simulate trajectories
+    years = list(range(2023, 2036))
+    traj_base   = debt_trajectory(debt0, pb_base,   r_base,   g_base)
+    traj_stress = debt_trajectory(debt0, pb_stress, r_stress, g_stress)
+    traj_cons   = debt_trajectory(debt0, pb_cons,   r_cons,   g_cons)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=years, y=traj_base, name="Baseline",
+                             line=dict(color="#3b82f6", width=2.5), mode="lines+markers"))
+    fig.add_trace(go.Scatter(x=years, y=traj_stress, name="Stress",
+                             line=dict(color="#ef4444", width=2, dash="dash"), mode="lines+markers"))
+    fig.add_trace(go.Scatter(x=years, y=traj_cons, name="Consolidation",
+                             line=dict(color="#22c55e", width=2, dash="dot"), mode="lines+markers"))
+    fig.add_hline(y=60, line_dash="dash", line_color="red", line_width=1.5,
+                  annotation_text="SGP limit: 60%", annotation_position="bottom right")
+    fig.update_layout(
+        title=f"{focus_name} · Debt-to-GDP trajectory 2023–2035",
+        hovermode="x unified", plot_bgcolor="white",
+        yaxis=dict(gridcolor="#eee", title="Gross debt (% GDP)"),
+        xaxis=dict(title="Year", dtick=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Verdict
+    end_base   = traj_base[-1]
+    end_stress = traj_stress[-1]
+    end_cons   = traj_cons[-1]
+    rg_base    = r_base - g_base
+
+    st.markdown("#### Sustainability verdict")
+    v1, v2, v3 = st.columns(3)
+
+    def verdict_card(label, end_val, start_val, rg, color, bg):
+        direction = "📈 Rising" if end_val > start_val + 1 else ("📉 Falling" if end_val < start_val - 1 else "→ Stable")
+        stable = "sustainable" if rg < 0 or end_val < 60 else "at risk"
+        st.markdown(f"""
+        <div style="background:{bg};border-radius:10px;padding:14px 18px;text-align:center;">
+            <div style="font-size:0.8em;color:#64748b;text-transform:uppercase;">{label}</div>
+            <div style="font-size:1.8em;font-weight:800;color:{color};">{end_val:.1f}%</div>
+            <div style="font-size:0.85em;color:#475569;">by 2035 · {direction}</div>
+            <div style="font-size:0.8em;font-weight:600;color:{color};margin-top:4px;">r−g = {rg:+.1f}pp → {stable}</div>
+        </div>""", unsafe_allow_html=True)
+
+    with v1:
+        verdict_card("Baseline", end_base, debt0, r_base - g_base, "#3b82f6", "#eff6ff")
+    with v2:
+        verdict_card("Stress", end_stress, debt0, r_stress - g_stress, "#ef4444", "#fef2f2")
+    with v3:
+        verdict_card("Consolidation", end_cons, debt0, r_cons - g_cons, "#16a34a", "#f0fdf4")
+
+    # Narrative
+    st.markdown("---")
+    if rg_base > 0 and end_base > 60:
+        st.error(f"⚠️ **Baseline scenario is unsustainable.** With r−g = +{rg_base:.1f}pp, debt is on an "
+                 f"explosive path, rising from **{debt0:.1f}%** to **{end_base:.1f}% GDP** by 2035. "
+                 f"Fiscal consolidation or structural growth reforms are needed to stabilise the trajectory.")
+    elif end_base > debt0 + 5:
+        st.warning(f"📈 **Debt is rising but not explosive.** Baseline projects debt reaching **{end_base:.1f}% GDP** "
+                   f"by 2035. The (r−g) differential of {rg_base:+.1f}pp is manageable but warrants monitoring.")
+    else:
+        st.success(f"✅ **Debt trajectory is broadly sustainable.** Baseline projects debt at **{end_base:.1f}% GDP** "
+                   f"by 2035 — {'below' if end_base < 60 else 'approaching'} the 60% SGP reference. "
+                   f"The (r−g) differential of {rg_base:+.1f}pp supports stabilisation.")
