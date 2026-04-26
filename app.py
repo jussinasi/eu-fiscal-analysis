@@ -3,16 +3,18 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 
+BASE = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+r = requests.get(f"{BASE}/gov_10a3_exp", params={"unit":"PC_GDP","sector":"S13","na_item":"TR","geo":"FI","sinceTimePeriod":"2020","untilTimePeriod":"2024"}, timeout=30)
+print(r.status_code)
+print(r.text[:500])
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="EU Fiscal Dashboard",
     page_icon="🇪🇺",
     layout="wide",
 )
-
-# ── Constants ──────────────────────────────────────────────────────────────────
-BASE = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
 
 INDICATORS = {
     "Gross debt (% GDP)":             {"dataset": "gov_10dd_edpt1", "na_item": "GD",  "unit": "PC_GDP"},
