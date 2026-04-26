@@ -402,29 +402,45 @@ elif page == "📐 Debt Sustainability":
     st.markdown(f"**Starting point (2023):** Gross debt **{debt0:.1f}% GDP** · "
                 f"Budget balance **{deficit0:.1f}% GDP**" if deficit0 else f"**Starting point (2023):** Gross debt **{debt0:.1f}% GDP**")
 
+    # Default values based on actual data
+    r_default  = 3.5
+    g_default  = 1.5
+    pb_default = round(float(primary0), 1) if primary0 else -1.0
+    pb_default = max(-6.0, min(4.0, pb_default))
+
+    # Reset button
     st.markdown("#### Scenario parameters")
+    reset_col, _ = st.columns([1, 4])
+    with reset_col:
+        if st.button("↺ Reset to current values"):
+            for k, v in [
+                ("r_base", r_default), ("g_base", g_default), ("pb_base", pb_default),
+                ("r_stress", min(r_default+1.5, 8.0)), ("g_stress", max(g_default-1.0, -2.0)),
+                ("pb_stress", max(-6.0, pb_default-1.0)),
+                ("r_cons", r_default), ("g_cons", g_default), ("pb_cons", min(pb_default+2.0, 4.0)),
+            ]:
+                st.session_state[k] = v
 
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("**Baseline**")
-        r_base = st.slider("Interest rate r (%)", 0.0, 8.0, 3.5, 0.1, key="r_base")
-        g_base = st.slider("GDP growth g (%)", -2.0, 6.0, 1.5, 0.1, key="g_base")
-        pb_base = st.slider("Primary balance (% GDP)", -6.0, 4.0,
-                            round(float(primary0), 1) if primary0 else -1.0, 0.1, key="pb_base")
+        r_base   = st.slider("Interest rate r (%)", 0.0, 8.0, r_default, 0.1, key="r_base")
+        g_base   = st.slider("GDP growth g (%)", -2.0, 6.0, g_default, 0.1, key="g_base")
+        pb_base  = st.slider("Primary balance (% GDP)", -6.0, 4.0, pb_default, 0.1, key="pb_base")
     with col_b:
         st.markdown("**Stress scenario**")
-        r_stress = st.slider("Interest rate r (%)", 0.0, 8.0, min(r_base + 1.5, 8.0), 0.1, key="r_stress")
-        g_stress = st.slider("GDP growth g (%)", -2.0, 6.0, max(g_base - 1.0, -2.0), 0.1, key="g_stress")
-        pb_stress = st.slider("Primary balance (% GDP)", -6.0, 4.0, min(pb_base - 1.0, -6.0), 0.1, key="pb_stress")
+        r_stress  = st.slider("Interest rate r (%)", 0.0, 8.0, min(r_default+1.5, 8.0), 0.1, key="r_stress")
+        g_stress  = st.slider("GDP growth g (%)", -2.0, 6.0, max(g_default-1.0, -2.0), 0.1, key="g_stress")
+        pb_stress = st.slider("Primary balance (% GDP)", -6.0, 4.0, max(-6.0, pb_default-1.0), 0.1, key="pb_stress")
 
     st.markdown("**Consolidation scenario**")
     col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
-        r_cons = st.slider("Interest rate r (%)", 0.0, 8.0, r_base, 0.1, key="r_cons")
+        r_cons  = st.slider("Interest rate r (%)", 0.0, 8.0, r_default, 0.1, key="r_cons")
     with col_c2:
-        g_cons = st.slider("GDP growth g (%)", -2.0, 6.0, g_base, 0.1, key="g_cons")
+        g_cons  = st.slider("GDP growth g (%)", -2.0, 6.0, g_default, 0.1, key="g_cons")
     with col_c3:
-        pb_cons = st.slider("Primary balance (% GDP)", -6.0, 4.0, min(pb_base + 2.0, 4.0), 0.1, key="pb_cons")
+        pb_cons = st.slider("Primary balance (% GDP)", -6.0, 4.0, min(pb_default+2.0, 4.0), 0.1, key="pb_cons")
 
     # Simulate trajectories
     years = list(range(2023, 2036))
