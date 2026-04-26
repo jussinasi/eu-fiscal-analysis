@@ -49,6 +49,21 @@ def eurostat_to_long(js):
     return s.reset_index().rename(columns={0: "value"})
 
 @st.cache_data(show_spinner=False)
+def get_latest_available_year(dataset, na_item, unit, geo="FI"):
+    """Find the latest year with actual data in Eurostat."""
+    try:
+        js = fetch(dataset, {"unit": unit, "sector": "S13", "na_item": na_item,
+                             "geo": geo, "sinceTimePeriod": "2020"})
+        df = eurostat_to_long(js)
+        df = df[["time", "value"]].dropna()
+        df["time"] = df["time"].astype(int)
+        if not df.empty:
+            return int(df["time"].max())
+    except Exception:
+        pass
+    return 2023  # fallback
+
+@st.cache_data(show_spinner=False)
 def load_indicator(indicator_key, geos, year_from, year_to):
     cfg = INDICATORS[indicator_key]
     rows = []
@@ -95,7 +110,7 @@ def load_fiscal_health(geo):
     for key, na_item in [("debt", "GD"), ("deficit", "B9")]:
         try:
             js = fetch("gov_10dd_edpt1", {"unit": "PC_GDP", "sector": "S13", "na_item": na_item,
-                                          "geo": geo, "sinceTimePeriod": "2018", "untilTimePeriod": "2023"})
+                                          "geo": geo, "sinceTimePeriod": "2018"})
             df = eurostat_to_long(js)
             df = df[df["geo"] == geo][["time", "value"]].dropna()
             df["time"] = df["time"].astype(int)
@@ -223,7 +238,12 @@ with st.sidebar:
     selected_display = st.multiselect("Countries", country_options, default=default_display)
     selected_geos = tuple(s.split(" – ")[0] for s in selected_display)
 
-    year_from, year_to = st.slider("Year range", 2000, 2023, (2010, 2023))
+    # Dynamically find latest available year
+    latest_year_debt = get_latest_available_year("gov_10dd_edpt1", "GD", "PC_GDP")
+    latest_year_revexp = get_latest_available_year("gov_10a_main", "TR", "PC_GDP")
+    latest_available = min(latest_year_debt, latest_year_revexp)
+    st.caption(f"Latest available data: **{latest_available}**")
+    year_from, year_to = st.slider("Year range", 2000, latest_available, (2010, latest_available))
 
     if page == "📊 Overview":
         selected_indicator = st.selectbox("Indicator", list(INDICATORS.keys()))
